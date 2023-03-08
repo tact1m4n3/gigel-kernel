@@ -30,12 +30,11 @@ pub fn init() {
     gdt.add_segment(PRESENT | DPL3 | CODE | LONG);
     gdt.add_segment(PRESENT | DPL3 | DATA);
 
-    let tss_base = tss as *const _ as u64;
+    let tss_base = tss as *const _ as usize;
     let tss_limit = mem::size_of::<Tss>() - 1;
     gdt.add_segment(PRESENT | TSS)
-        .encode_tss_low(tss_base, tss_limit as u32);
-    gdt.add_segment(0)
-        .encode_tss_high(tss_base, tss_limit as u32);
+        .encode_tss_low(tss_base, tss_limit);
+    gdt.add_segment(0).encode_tss_high(tss_base, tss_limit);
 
     gdt.load();
 
@@ -158,16 +157,16 @@ impl Entry {
         self
     }
 
-    pub fn encode_tss_low(&mut self, base: u64, limit: u32) -> &mut Self {
+    pub fn encode_tss_low(&mut self, base: usize, limit: usize) -> &mut Self {
         self.high |= ((base >> 16) & 0xFF) as u32;
         self.high |= (((base >> 24) & 0xFF) << 24) as u32;
-        self.high |= ((limit >> 16) & 0xF) << 16;
-        self.low |= limit & 0xFFFF;
+        self.high |= (((limit >> 16) & 0xF) << 16) as u32;
+        self.low |= (limit & 0xFFFF) as u32;
         self.low |= ((base & 0xFFFF) << 16) as u32;
         self
     }
 
-    pub fn encode_tss_high(&mut self, base: u64, _limit: u32) -> &mut Self {
+    pub fn encode_tss_high(&mut self, base: usize, _limit: usize) -> &mut Self {
         self.low = (base >> 32) as u32;
         self
     }

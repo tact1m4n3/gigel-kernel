@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-mm = { path="mm" }
+memory = { path = "memory" }
+
+[target.x86_64-unknown-kernel.dependencies]
+multiboot2 = { path = "multiboot2"}
 
 [profile.dev]
 opt-level = 2

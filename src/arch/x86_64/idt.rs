@@ -9,6 +9,13 @@ use crate::{
     println,
 };
 
+const PRESENT: u8 = 1 << 7;
+const DPL0: u8 = 0 << 5;
+const DPL1: u8 = 1 << 5;
+const DPL2: u8 = 2 << 5;
+const DPL3: u8 = 3 << 5;
+const INTERRUPT: u8 = 0xE;
+
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 pub static mut IDT: Idt = Idt::new();
 
@@ -107,15 +114,13 @@ struct IdtPointer {
     base: *const Idt,
 }
 
-pub type Flags = u8;
-
 #[repr(packed)]
 #[derive(Clone, Copy)]
 pub struct Entry {
     base_low: u16,
     cs: u16,
     ist: u8,
-    flags: Flags,
+    flags: u8,
     base_mid: u16,
     base_high: u32,
     _reserved: u32,
@@ -151,18 +156,11 @@ impl Entry {
         self
     }
 
-    pub fn set_flags(&mut self, flags: Flags) -> &mut Self {
+    pub fn set_flags(&mut self, flags: u8) -> &mut Self {
         self.flags |= flags;
         self
     }
 }
-
-pub const PRESENT: Flags = 1 << 7;
-pub const DPL0: Flags = 0 << 5;
-pub const DPL1: Flags = 1 << 5;
-pub const DPL2: Flags = 2 << 5;
-pub const DPL3: Flags = 3 << 5;
-pub const INTERRUPT: Flags = 0xE;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]

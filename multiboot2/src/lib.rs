@@ -1,65 +1,78 @@
+#![no_std]
+
 use core::{marker::PhantomData, mem, slice, str};
 
-use mm::PAGE_SIZE;
+pub const MAGIC: u64 = 0x36d76289;
 
-const MULTIBOOT_MAGIC: u64 = 0x36d76289;
-
-pub fn init(magic: u64, info: *const u8) -> &'static MultibootInfo {
-    if magic != MULTIBOOT_MAGIC {
-        panic!("unknown bootloader")
+pub fn init(magic: u64, info: *const u8) -> Option<&'static BootInfo> {
+    if magic == MAGIC {
+        Some(unsafe { &*(info as *mut BootInfo) })
+    } else {
+        None
     }
-    unsafe { &*(info as *mut MultibootInfo) }
 }
 
 #[repr(C)]
-pub struct MultibootInfo {
+pub struct BootInfo {
     size: u32,
     reserved: u32,
-    tags: Tag,
+    tags: TagBase,
 }
 
-impl MultibootInfo {
-    pub fn overlap_page(&self, addr: usize) -> bool {
-        let start = self as *const _ as usize;
-        start < addr + PAGE_SIZE && addr <= start + (self.size as usize)
+impl BootInfo {
+    #[inline]
+    pub fn start_addr(&self) -> usize {
+        self as *const _ as usize
     }
 
-    pub fn tags(&self) -> TagIter {
+    #[inline]
+    pub fn size(&self) -> usize {
+        self.size as usize
+    }
+
+    #[inline]
+    pub fn end_addr(&self) -> usize {
+        self.start_addr() + self.size()
+    }
+
+    #[inline]
+    pub const fn tags(&self) -> TagIter {
         TagIter {
-            current: &self.tags as *const Tag,
+            current: &self.tags as *const TagBase,
             phantom: PhantomData {},
         }
     }
 
-    pub fn find_tag<T: IsTag>(&self, typ: TagType) -> Option<&T> {
+    pub fn find_tag<T: Tag>(&self, typ: TagType) -> Option<&T> {
         unsafe { mem::transmute(self.tags().find(|&x| x.typ == typ)) }
     }
 }
 
 #[repr(C)]
-pub struct Tag {
+pub struct TagBase {
     typ: TagType,
     size: u32,
 }
 
-pub trait IsTag {}
+pub trait Tag {}
 
 pub struct TagIter<'a> {
-    current: *const Tag,
-    phantom: PhantomData<&'a Tag>,
+    current: *const TagBase,
+    phantom: PhantomData<&'a TagBase>,
 }
 
 impl<'a> Iterator for TagIter<'a> {
-    type Item = &'a Tag;
+    type Item = &'a TagBase;
 
     fn next(&mut self) -> Option<Self::Item> {
         match unsafe { &*self.current } {
-            &Tag {
+            &TagBase {
                 typ: TagType::End,
                 size: 8,
             } => None,
             tag => {
-                self.current = ((self.current as usize + tag.size as usize + 7) & !7) as *const Tag;
+                self.current =
+                    ((self.current as usize + tag.size as usize + 7) & !7) as *const TagBase;
                 Some(tag)
             }
         }
@@ -105,13 +118,13 @@ impl CmdlineTag {
         unsafe {
             str::from_utf8_unchecked(slice::from_raw_parts(
                 &self.cmdline,
-                self.size as usize - mem::size_of::<Tag>(),
+                self.size as usize - mem::size_of::<TagBase>(),
             ))
         }
     }
 }
 
-impl IsTag for CmdlineTag {}
+impl Tag for CmdlineTag {}
 
 #[repr(C)]
 pub struct BootloaderTag {
@@ -125,13 +138,13 @@ impl BootloaderTag {
         unsafe {
             str::from_utf8_unchecked(slice::from_raw_parts(
                 &self.bootloader,
-                self.size as usize - mem::size_of::<Tag>(),
+                self.size as usize - mem::size_of::<TagBase>(),
             ))
         }
     }
 }
 
-impl IsTag for BootloaderTag {}
+impl Tag for BootloaderTag {}
 
 #[repr(C)]
 pub struct MemoryMapTag {
@@ -155,7 +168,7 @@ impl MemoryMapTag {
     }
 }
 
-impl IsTag for MemoryMapTag {}
+impl Tag for MemoryMapTag {}
 
 #[repr(C)]
 pub struct MemoryArea {
@@ -166,14 +179,22 @@ pub struct MemoryArea {
 }
 
 impl MemoryArea {
-    pub fn start(&self) -> usize {
+    #[inline]
+    pub fn start_addr(&self) -> usize {
         self.base_addr as usize
     }
 
+    #[inline]
     pub fn size(&self) -> usize {
         self.length as usize
     }
 
+    #[inline]
+    pub fn end_addr(&self) -> usize {
+        self.start_addr() + self.size()
+    }
+
+    #[inline]
     pub fn typ(&self) -> AreaType {
         self.typ
     }

@@ -1,5 +1,5 @@
 target ?= x86_64-unknown-kernel
-profile ?= debug
+profile ?= release
 
 cargo_target = targets/$(target).json
 ifeq ($(profile), debug)

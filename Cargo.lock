@@ -6,9 +6,14 @@ version = 3
 name = "kernel"
 version = "0.1.0"
 dependencies = [
- "mm",
+ "memory",
+ "multiboot2",
 ]
 
 [[package]]
-name = "mm"
+name = "memory"
+version = "0.1.0"
+
+[[package]]
+name = "multiboot2"
 version = "0.1.0"
