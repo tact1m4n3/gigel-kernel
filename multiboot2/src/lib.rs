@@ -12,6 +12,7 @@ pub fn init(magic: u64, info: *const u8) -> Option<&'static BootInfo> {
     }
 }
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct BootInfo {
     size: u32,
@@ -48,6 +49,7 @@ impl BootInfo {
     }
 }
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct TagBase {
     typ: TagType,
@@ -79,8 +81,8 @@ impl<'a> Iterator for TagIter<'a> {
     }
 }
 
-#[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
 pub enum TagType {
     End = 0,
     Cmdline = 1,
@@ -106,6 +108,7 @@ pub enum TagType {
     LoadBaseAddr = 21,
 }
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct CmdlineTag {
     typ: TagType,
@@ -126,6 +129,7 @@ impl CmdlineTag {
 
 impl Tag for CmdlineTag {}
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct BootloaderTag {
     typ: TagType,
@@ -146,6 +150,7 @@ impl BootloaderTag {
 
 impl Tag for BootloaderTag {}
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct MemoryMapTag {
     typ: TagType,
@@ -170,6 +175,7 @@ impl MemoryMapTag {
 
 impl Tag for MemoryMapTag {}
 
+#[derive(Debug)]
 #[repr(C)]
 pub struct MemoryArea {
     pub base_addr: u64,
@@ -221,8 +227,8 @@ impl<'a> Iterator for MemoryAreaIter<'a> {
     }
 }
 
-#[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
 pub enum AreaType {
     Available = 1,
     Reserved = 2,

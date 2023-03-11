@@ -19,7 +19,7 @@ mboot2_header_end:
 
 .section .bss
 .align 16
-.skip 8 * 4096
+.skip 4 * 4096
 stack_top:
 
 .section .text

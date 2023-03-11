@@ -4,7 +4,7 @@ use core::fmt::Display;
 
 pub mod frame;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AllocError {
     NoMemory,
 }

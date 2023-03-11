@@ -1,5 +1,7 @@
 #![no_std]
 
+use core::marker::PhantomData;
+
 pub use alloc::*;
 pub use paging::*;
 
@@ -12,36 +14,99 @@ pub struct Frame(usize);
 
 impl Frame {
     #[inline]
-    pub const fn new(addr: usize) -> Self {
-        Self(addr & !PAGE_MASK)
+    pub const fn from_idx(idx: usize) -> Self {
+        Self(idx)
+    }
+
+    #[inline]
+    pub const fn from_addr(addr: usize) -> Self {
+        Self(addr >> PAGE_SHIFT)
+    }
+
+    #[inline]
+    pub const fn idx(self) -> usize {
+        self.0
     }
 
     #[inline]
     pub const fn addr(self) -> usize {
-        self.0
+        self.0 << PAGE_SHIFT
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameRange {
-    start: usize,
+    first: usize,
     count: usize,
 }
 
 impl FrameRange {
-    #[inline]
-    pub const fn new(start: usize, count: usize) -> Self {
+    pub const fn from_idx(first: usize, count: usize) -> Self {
+        if count == 0 {
+            panic!("frame range with no frames");
+        }
+        Self { first, count }
+    }
+
+    pub const fn from_addr(first: usize, count: usize) -> Self {
+        if count == 0 {
+            panic!("frame range with no frames");
+        }
         Self {
-            start: start & !PAGE_MASK,
+            first: first >> PAGE_SHIFT,
             count,
         }
     }
 
-    fn get(&self, idx: usize) -> Frame {
+    #[inline]
+    pub fn addr(&self) -> usize {
+        self.first >> PAGE_SHIFT
+    }
+
+    pub fn get(&self, idx: usize) -> Frame {
         if idx >= self.count {
             panic!("index out of range")
         }
-        Frame::new(self.start + idx * self.count)
+        Frame(self.first + idx)
+    }
+
+    #[inline]
+    pub fn first(&self) -> Frame {
+        self.get(0)
+    }
+
+    #[inline]
+    pub fn last(&self) -> Frame {
+        self.get(self.count - 1)
+    }
+
+    #[inline]
+    pub fn iter(&self) -> FrameIter<'_> {
+        FrameIter {
+            current: self.first,
+            last: self.first + self.count,
+            phantom: PhantomData {},
+        }
+    }
+}
+
+pub struct FrameIter<'a> {
+    current: usize,
+    last: usize,
+    phantom: PhantomData<&'a FrameRange>,
+}
+
+impl<'a> Iterator for FrameIter<'a> {
+    type Item = Frame;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current < self.last {
+            let frame = Frame::from_idx(self.current);
+            self.current += 1;
+            Some(frame)
+        } else {
+            None
+        }
     }
 }
 

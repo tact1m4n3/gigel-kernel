@@ -1,60 +1,51 @@
 use core::{
+    arch::asm,
     marker::PhantomData,
     ops::{BitAnd, BitOr},
 };
 
 use crate::{AllocError, Frame, FrameAlloc, Level1, Level2, Level3, Level4, PageTableLevel};
 
-pub const PAGE_SIZE: usize = 0x1000;
+pub const PAGE_SHIFT: usize = 12;
 pub const PAGE_MASK: usize = 0xFFF;
+pub const PAGE_SIZE: usize = 0x1000;
 
-// pub fn alloc_kernel_page_directory() -> &'static mut PageTable<Level4> {
-//     static mut P4: PageTable<Level4> = PageTable::new();
-//     static mut P3: PageTable<Level3> = PageTable::new();
-//     static mut P2: PageTable<Level2> = PageTable::new();
-//     static mut P1: PageTable<Level1> = PageTable::new();
-
-//     unsafe {
-//         P4.get_mut(0)
-//             .set_frame(Frame::new(&P3 as *const _ as usize))
-//             .set_flags(PageFlags::PRESENT | PageFlags::WRITE);
-//         P3.get_mut(0)
-//             .set_frame(Frame::new(&P2 as *const _ as usize))
-//             .set_flags(PageFlags::PRESENT | PageFlags::WRITE);
-//         P2.get_mut(0)
-//             .set_frame(Frame::new(&P1 as *const _ as usize))
-//             .set_flags(PageFlags::PRESENT | PageFlags::WRITE);
-//     }
-
-//     unsafe { &mut P4 }
-// }
-
-pub struct PageMapper<'a, F: FrameAlloc> {
-    allocator: &'a mut F,
-    root: &'a mut PageTable<Level4>,
+pub struct PageMapper<F> {
+    root: &'static mut PageTable<Level4>,
+    allocator: F,
 }
 
-impl<'a, F: FrameAlloc> PageMapper<'_, F> {
-    #[inline]
-    pub fn new(allocator: &'a mut F, root: &'a mut PageTable<Level4>) -> PageMapper<'a, F> {
+impl<F: FrameAlloc> PageMapper<F> {
+    pub fn new(mut allocator: F) -> PageMapper<F> {
+        let root =
+            unsafe { &mut *(allocator.alloc(1).unwrap().addr() as *mut PageTable<_>) }.init();
         PageMapper { root, allocator }
+    }
+
+    pub fn current(allocator: F) -> PageMapper<F> {
+        let root = unsafe { &mut *(read_cr3() as *mut PageTable<_>) }.init();
+        PageMapper { root, allocator }
+    }
+
+    pub fn make_current(&self) {
+        unsafe { write_cr3(self.root as *const _ as usize) }
     }
 
     pub fn get_page(&self, addr: usize) -> Option<&Page> {
         let p4 = &*self.root;
-        if p4.get(addr).flags() & PageFlags::PRESENT {
+        if !(p4.get(addr).flags() & PageFlags::PRESENT) {
             return None;
         }
         let p3 = p4.next(addr);
-        if p3.get(addr).flags() & PageFlags::PRESENT {
+        if !(p3.get(addr).flags() & PageFlags::PRESENT) {
             return None;
         }
         let p2 = p3.next(addr);
-        if p2.get(addr).flags() & PageFlags::PRESENT {
+        if !(p2.get(addr).flags() & PageFlags::PRESENT) {
             return None;
         }
         let p1 = p2.next(addr);
-        if p1.get(addr).flags() & PageFlags::PRESENT {
+        if !(p1.get(addr).flags() & PageFlags::PRESENT) {
             return None;
         }
         Some(p1.get(addr))
@@ -62,19 +53,19 @@ impl<'a, F: FrameAlloc> PageMapper<'_, F> {
 
     pub fn get_page_mut(&mut self, addr: usize) -> Option<&mut Page> {
         let p4 = &mut *self.root;
-        if p4.get(addr).flags() & PageFlags::PRESENT {
+        if !(p4.get(addr).flags() & PageFlags::PRESENT) {
             return None;
         }
         let p3 = p4.next_mut(addr);
-        if p3.get(addr).flags() & PageFlags::PRESENT {
+        if !(p3.get(addr).flags() & PageFlags::PRESENT) {
             return None;
         }
         let p2 = p3.next_mut(addr);
-        if p2.get(addr).flags() & PageFlags::PRESENT {
+        if !(p2.get(addr).flags() & PageFlags::PRESENT) {
             return None;
         }
         let p1 = p2.next_mut(addr);
-        if p1.get(addr).flags() & PageFlags::PRESENT {
+        if !(p1.get(addr).flags() & PageFlags::PRESENT) {
             return None;
         }
         Some(p1.get_mut(addr))
@@ -83,8 +74,8 @@ impl<'a, F: FrameAlloc> PageMapper<'_, F> {
     pub fn touch_page(&mut self, addr: usize, flags: PageFlags) -> Result<&mut Page, AllocError> {
         let p4 = &mut *self.root;
 
-        let p3 = if p4.get(addr).flags() & PageFlags::PRESENT {
-            let frame = self.allocator.alloc(1)?.get(0);
+        let p3 = if !(p4.get(addr).flags() & PageFlags::PRESENT) {
+            let frame = self.allocator.alloc(1)?.first();
             p4.get_mut(addr)
                 .set_frame(frame)
                 .set_flags(PageFlags::PRESENT | flags);
@@ -93,9 +84,9 @@ impl<'a, F: FrameAlloc> PageMapper<'_, F> {
             p4.next_mut(addr)
         };
 
-        let p2 = if p3.get(addr).flags() & PageFlags::PRESENT {
-            let frame = self.allocator.alloc(1)?.get(0);
-            p3.get_mut(0)
+        let p2 = if !(p3.get(addr).flags() & PageFlags::PRESENT) {
+            let frame = self.allocator.alloc(1)?.first();
+            p3.get_mut(addr)
                 .set_frame(frame)
                 .set_flags(PageFlags::PRESENT | flags);
             unsafe { &mut *(frame.addr() as *mut PageTable<_>) }.init()
@@ -103,8 +94,8 @@ impl<'a, F: FrameAlloc> PageMapper<'_, F> {
             p3.next_mut(addr)
         };
 
-        let p1 = if p2.get(addr).flags() & PageFlags::PRESENT {
-            let frame = self.allocator.alloc(1)?.get(0);
+        let p1 = if !(p2.get(addr).flags() & PageFlags::PRESENT) {
+            let frame = self.allocator.alloc(1)?.first();
             p2.get_mut(addr)
                 .set_frame(frame)
                 .set_flags(PageFlags::PRESENT | flags);
@@ -135,21 +126,13 @@ impl<'a, F: FrameAlloc> PageMapper<'_, F> {
     }
 }
 
-#[repr(C, align(4096))]
+#[repr(transparent)]
 pub struct PageTable<L: PageTableLevel> {
     entries: [Page; 512],
     level: PhantomData<L>,
 }
 
 impl<L: PageTableLevel> PageTable<L> {
-    #[inline]
-    pub const fn new() -> Self {
-        Self {
-            entries: [Page::new(); 512],
-            level: PhantomData {},
-        }
-    }
-
     #[inline]
     pub fn init(&mut self) -> &mut Self {
         self.entries.fill(Page::new());
@@ -246,8 +229,13 @@ impl Page {
     }
 
     #[inline]
+    pub const fn raw(&self) -> usize {
+        self.0
+    }
+
+    #[inline]
     pub const fn frame(&self) -> Frame {
-        Frame::new(self.0 & !PAGE_MASK)
+        Frame::from_addr(self.0 & !PAGE_MASK)
     }
 
     #[inline]
@@ -302,4 +290,20 @@ impl BitOr for PageFlags {
     fn bitor(self, rhs: Self) -> Self::Output {
         Self(self.0 | rhs.0)
     }
+}
+
+#[inline]
+unsafe fn write_cr3(val: usize) {
+    asm!("mov {0}, %cr3", in(reg) val, options(att_syntax));
+}
+
+#[inline]
+unsafe fn read_cr3() -> usize {
+    let val: usize;
+    asm!(
+        "mov %cr3, {0}",
+        out(reg) val,
+        options(nomem, nostack, att_syntax)
+    );
+    val
 }
